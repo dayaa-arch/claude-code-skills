@@ -19,21 +19,33 @@ argument-hint: [案件名 or projectId]（省略時は list_projects で一覧�
 
 このスキルは `fieldspec-os` MCP サーバ（tools: `list_projects` / `get_project_status` / `get_project_spec`）に依存する。
 
-- まず `list_projects` を呼べるか確認する。呼べない場合は「MCP 未接続」なので、FieldSpec OS リポジトリの
-  README「FieldSpec OS MCP サーバ」節（ユーザースコープ登録手順、PAT 発行）を案内し、中止する。
 - MCP は read-only。ここでは**仕様を読むだけ**で、FieldSpec OS 側の成果物は一切書き換えない。
+- 接続確認は `fsos-spec-fetcher` サブエージェント側で行う（ステップ 0）。未接続と返ってきたら、FieldSpec OS リポジトリの
+  README「FieldSpec OS MCP サーバ」節（ユーザースコープ登録手順、PAT 発行）を案内し、中止する。
 
-## ステップ 0：案件の特定と仕様取得
+## ステップ 0：案件の特定と仕様取得（`fsos-spec-fetcher` に委譲）
 
-1. `list_projects` を呼び、案件一覧（id / 顧客名 / 案件名 / 現在フェーズ / ステータス）を得る。
-   - 引数が案件名/idに一致すればそれを採用。曖昧・複数一致・引数なしなら一覧を提示して確認する。
-2. 確定した `projectId` で `get_project_spec(projectId)` を呼び、仕様一式を取得する。必要に応じて
-   `get_project_status(projectId)` で成果物の作成状況も確認する。
-3. **充足チェック**: `requirements`（FR）や `acceptanceCriteria`（AC）が空なら、その案件は 02_要件定義まで
-   未生成。ユーザーに知らせ、「ヒアリング/業務設計だけで下書きするか」「FieldSpec OS 側で要件定義を生成してから
-   再実行するか」を確認する（薄い仕様から docs を捏造しない）。
+**MCP 呼び出しはメインで行わない。** `get_project_spec` の返却物には `hearingSheetMarkdown`（ヒアリングシート全文）と
+`requirementsDocMarkdown`（要件定義書本文）が含まれ、そのままメインコンテキストに載せると、この後の docs 7点生成に
+使える余地が無くなる。`fsos-spec-fetcher` サブエージェントに取得させ、**生の仕様はローカルのキャッシュファイルに
+逃がして、メインは索引だけを受け取る**。
 
-`get_project_spec` の出力フィールド（情報源）:
+1. `fsos-spec-fetcher` を起動し、引数（案件名 or `projectId`）を渡す。
+2. サブエージェントが返すもの:
+   - 確定した `projectId` / 顧客名 / 案件名 / `generatedAt`
+   - **キャッシュファイルのパス**（`.steering/.cache/fsos-spec-<projectId>.json`）— 以降のステップで各生成エージェントに渡す
+   - フィールド索引（有無と件数）、FR / AC / Q の ID 一覧、見出し一覧
+   - 充足チェック結果
+3. **案件が一意に決まらなかった場合**は、サブエージェントが候補一覧だけを返して終了する。
+   その一覧をユーザーに提示して選ばせ、確定した `projectId` で `fsos-spec-fetcher` を再度起動する
+   （サブエージェントはユーザーに質問できないため、選択はメインの責務）。
+4. **充足チェックが ⚠️（`requirements` や `acceptanceCriteria` が空）の場合**は、その案件は 02_要件定義まで未生成。
+   ユーザーに知らせ、「ヒアリング/業務設計だけで下書きするか」「FieldSpec OS 側で要件定義を生成してから
+   再実行するか」を確認する（薄い仕様から docs を捏造しない）。この判断もメインが行う。
+
+以降、**仕様の参照はすべてキャッシュファイル経由**とする。メインがキャッシュを `Read` することはない。
+
+`get_project_spec` の出力フィールド（情報源。キャッシュ JSON のキーと同じ）:
 
 | フィールド | 内容 |
 | --- | --- |
@@ -44,13 +56,18 @@ argument-hint: [案件名 or projectId]（省略時は list_projects で一覧�
 | `openQuestions[]` | 未確定論点（Q-xxx：論点・選択肢・推奨案・確認先） |
 | `requirementsDocMarkdown` | 要件定義書本文（背景・スコープ・用語・機能/非機能要件・制約） |
 
-## ステップ 1：ローカルリポジトリの把握
+## ステップ 1：ローカルリポジトリの把握（`Explore` に委譲）
 
 生成する docs は「**何を作るか**（＝MCP の仕様）」と「**どう作るか**（＝このリポジトリの実態）」の両方を反映する。
-`/init` 同様、リポジトリを検査して実際の技術スタックを把握する:
+後者の調査は、組み込みの **`Explore` サブエージェント**に委譲する（`/dev-docs` 手順 1.5 と同じ）。返させるもの:
 
-- 依存/ビルド定義（`package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` 等）、Lint/テスト/フォーマット設定、
-  既存の `docs/` や `CLAUDE.md`、ディレクトリ構成、フレームワーク・言語バージョン。
+- 言語・フレームワーク・主要ライブラリと**バージョン**（`package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` 等の実値）
+- build / 開発サーバ / lint / 型チェック / テスト / フォーマットの**実コマンド**（存在しないものは「なし」と明記させる）
+- ディレクトリ構成の要約（深さ2〜3）
+- 既存の `docs/` `CLAUDE.md` `README.md` の有無
+
+この結果を「リポジトリ実態サマリ」として、以降の `doc-writer` 起動時に毎回渡す。
+
 - 仕様（ヒアリング §10 既存ツール・§13 技術決定）とリポジトリ実態が食い違う場合は、リポジトリ実態を優先し、
   差異はユーザーに確認する。まだ空のリポジトリなら、仕様＋dev-docs 推奨構成から初期構成を提案する。
 
@@ -58,8 +75,21 @@ argument-hint: [案件名 or projectId]（省略時は list_projects で一覧�
 
 **上書き防止**: `docs/` に既存ファイルがあれば、いきなり上書きしない。既存を列挙し「不足分のみ / 作り直し / 中止」を確認する。
 
-`mkdir -p docs .steering` の後、次の順で作成する。**1ファイルごとに作成→承認を得てから次へ**進む
-（`/add-feature` 等でまとめて承認する運用に合わせてもよい）。各ファイルは下表の情報源から生成する。
+`mkdir -p docs .steering` の後、次の順で作成する。**各ファイルの執筆は `doc-writer` サブエージェントに委譲する。**
+
+`doc-writer` 起動時に渡すもの:
+
+- 生成対象ファイルのパス
+- **キャッシュファイルのパス**（ステップ 0）と、下表の「主な情報源」に挙がっている**フィールド名**（全フィールドを舐めさせない）
+- ステップ 1 のリポジトリ実態サマリ
+- **既に確定した先行ドキュメントの決定事項**（前回の `doc-writer` が返した「次のファイルへの引き継ぎ事項」をそのまま渡す）
+
+**1ファイルごとに作成→承認を得てから次へ**進む（`/add-feature` 等でまとめて承認する運用に合わせてもよい）。
+承認はメインが取り、`doc-writer` が返した要約とファイルパスを提示してユーザーに実ファイルを確認してもらう。
+**7ファイルを並列生成しない**（先行の決定事項に後続が従う必要があるため、並列にすると整合性が壊れる）。
+`doc-writer` が「矛盾の検知」を返したら、次に進む前にユーザーに提示して解消する。
+
+各ファイルは下表の情報源から生成する。
 
 | # | ファイル | 主な情報源（get_project_spec のフィールド ＋ リポジトリ実態） |
 | --- | --- | --- |
@@ -71,11 +101,21 @@ argument-hint: [案件名 or projectId]（省略時は list_projects で一覧�
 | 6 | `glossary.md` | `requirementsDocMarkdown` §3（用語）／`hearingSheetMarkdown`（ドメイン用語）／ID 規約（BIZ/FR/AC/Q） |
 | 7 | `development-roadmap.md` | `hearingSheetMarkdown`（期限・MVP 範囲）／`requirements` の優先度（MoSCoW）／`openQuestions`（未決の解消順） |
 
-各ドキュメントの章立て・粒度は `/dev-docs`「永続的ドキュメント」節の定義に従う。
+各ドキュメントの章立て・粒度は `/dev-docs`「永続的ドキュメント」節の定義に従う（`doc-writer` が自分で
+`~/.claude/commands/dev-docs.md` を読んで適用する）。
+
+## ステップ 2.5：ドキュメント横断レビュー（必須）
+
+7ファイルが揃ったら、**`/review-docs` を必ず実行する。** 1ファイルずつ逐次生成しているため、単体では整合していても
+ドキュメント間の不整合（技術スタックの食い違い、FR → 設計のトレーサビリティ欠如、用語の表記ゆれ）が残りうる。
+
+- **Critical は実装に入る前に必ず修正する。** 修正は `doc-writer` に該当ファイルを渡して行い、修正後にもう一度かける。
+- 根拠 ID（BIZ / FR / AC / Q）の欠落や、`（要確認）` の残存も併せて確認する。
 
 ## ステップ 3：CLAUDE.md の生成
 
-CLAUDE.md を作成（既存なら該当セクションを追記）。記載は次に**限定**し、本スキルや dev-docs の全文を写さない:
+CLAUDE.md を作成（既存なら該当セクションを追記）。`doc-writer` に委譲してよいが、その場合は
+**「記載内容を次の4項目に限定する」制約を明示的に渡す**こと。本スキルや dev-docs の全文を写さない:
 
 1. **ステアリング規則の要約**：`.steering/[YYYYMMDD]-[開発タイトル]/` に requirements/design/tasklist を作ること、命名規則。
 2. **プロジェクト固有情報**：確定した技術スタック、ビルド/テスト/lint コマンド、仮想環境の有効化。
@@ -86,7 +126,8 @@ CLAUDE.md を作成（既存なら該当セクションを追記）。記載は�
 ## ステップ 4：README.md の生成
 
 `product-requirements.md` と `architecture.md` を基に、プロダクト概要・目的・主要機能・セットアップ/実行手順・
-仕様の参照先（FieldSpec OS 案件 id と MCP）を README にまとめる。
+仕様の参照先（FieldSpec OS 案件 id と MCP）を README にまとめる。`doc-writer` に委譲してよい
+（情報源として上記2ファイルのパスとリポジトリ実態サマリを渡す）。
 
 ## ステップ 5：ステアリング初期化と実装
 
@@ -97,6 +138,11 @@ requirements/design/tasklist を作成（日付は `date +%Y%m%d` で取得）�
 
 - **SSOT はあくまで FieldSpec OS の仕様**。docs には根拠の ID（BIZ-xxx / FR-xxx / AC-xxx / Q-xxx）を保持し、
   仕様のどの項目に由来するか辿れるようにする（例：機能要件に対応 FR-ID、受け入れ条件に AC-ID を併記）。
+- **キャッシュファイルは SSOT のローカル写しに過ぎない**。`generatedAt` で鮮度を確認し、FieldSpec OS 側が更新されたら
+  `fsos-spec-fetcher` を再実行してキャッシュを取り直す。キャッシュを直接編集しない。顧客の一次情報を含むため
+  `.gitignore` で `.steering/.cache/` を除外する（`fsos-spec-fetcher` が対応済み）。
+- **仕様の原文をメインコンテキストに読み込まない**（`/dev-docs`「サブエージェント運用方針」）。取得は
+  `fsos-spec-fetcher`、参照は各 `doc-writer` がキャッシュから行う。
 - **捏造しない**。仕様に無い数値・固有名詞を作らない。未確定な点は `openQuestions`（Q-xxx）を「未確定論点」として
   そのまま docs に転記し、「（要確認）」と明記する。ヒアリングの「（要確認）」も踏襲する。
 - **段階承認**：各永続ドキュメントは作成→承認→次、を守る（`/add-feature` 経由なら一括承認でよい）。
@@ -111,4 +157,5 @@ requirements/design/tasklist を作成（日付は `date +%Y%m%d` で取得）�
 ## 完了時の報告
 
 生成/更新したファイル一覧、参照した案件（id・顧客・案件名・`generatedAt`）、仕様が薄く「（要確認）」で埋めた箇所、
-未解決の `openQuestions` を要約して報告する。
+未解決の `openQuestions`、ステップ 2.5 のレビュー結果を要約して報告する。
+各 `doc-writer` が返した「要確認箇所」を集約して一覧にすること。

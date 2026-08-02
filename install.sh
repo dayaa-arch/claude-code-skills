@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # claude-code-skills のインストーラ。
-# commands/ を ~/.claude/commands/ へ、skills/ を ~/.claude/skills/ へコピーする。
+# commands/ を ~/.claude/commands/ へ、skills/ を ~/.claude/skills/ へ、agents/ を ~/.claude/agents/ へコピーする。
 # 同名ファイル/ディレクトリがある場合は上書き前に確認する。
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DEST="$HOME/.claude/commands"
 SKILLS_DEST="$HOME/.claude/skills"
+AGENTS_DEST="$HOME/.claude/agents"
 
-mkdir -p "$COMMANDS_DEST" "$SKILLS_DEST"
+mkdir -p "$COMMANDS_DEST" "$SKILLS_DEST" "$AGENTS_DEST"
 
 confirm_overwrite() {
   local target="$1"
@@ -42,6 +43,18 @@ for d in "$REPO_DIR"/skills/*/; do
   if confirm_overwrite "$dest"; then
     rm -rf "$dest"
     cp -r "$d" "$dest"
+    echo "  ✓ $name"
+  else
+    echo "  - $name をスキップ"
+  fi
+done
+
+echo "== サブエージェントをインストール ($AGENTS_DEST) =="
+for f in "$REPO_DIR"/agents/*.md; do
+  name="$(basename "$f")"
+  dest="$AGENTS_DEST/$name"
+  if confirm_overwrite "$dest"; then
+    cp "$f" "$dest"
     echo "  ✓ $name"
   else
     echo "  - $name をスキップ"

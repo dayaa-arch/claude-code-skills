@@ -26,6 +26,17 @@ FastAPI / Python プロジェクトのスキャフォールディングを対象
 | --- | --- |
 | [`hearing-sheet`](skills/hearing-sheet/SKILL.md) | Google Drive の案件フォルダからヒアリングシート雛形を読み込み、対話でヒアリングを実施し、回答を Drive とローカル `docs/idea.md` に保存する |
 
+### サブエージェント（`agents/`）— `~/.claude/agents/` に配置
+
+`/dev-docs` / `/fsos-dev` / `/add-feature` から呼び出される、重い読み込み・生成処理をメインの会話から隔離するための専用サブエージェント群です。
+
+| エージェント | 説明 |
+| --- | --- |
+| [`doc-writer`](agents/doc-writer.md) | 永続的ドキュメント（`docs/` 配下）や `CLAUDE.md` / `README.md` を1ファイルずつ生成・更新し、書いたパスと根拠だけを要約して返す |
+| [`docs-digest`](agents/docs-digest.md) | `CLAUDE.md` と `docs/` を読み込み、実装に入る前に必要な前提だけを圧縮した「実装前提ダイジェスト」として返す（`/add-feature` 冒頭で使用） |
+| [`fsos-spec-fetcher`](agents/fsos-spec-fetcher.md) | FieldSpec OS の MCP から案件の確定済み仕様を取得し、生の仕様をローカルキャッシュに書き出して索引だけを返す（`/fsos-dev` で使用） |
+| [`review-docs`](agents/review-docs.md) | `/dev-docs` が生成した永続的ドキュメントと `CLAUDE.md` の品質・整合性をレビューし、簡潔な指摘リストだけを返す |
+
 ## インストール
 
 ### 1ファイルだけ使う場合
@@ -38,6 +49,9 @@ cp commands/dev-docs.md ~/.claude/commands/
 
 # スキル
 cp -r skills/hearing-sheet ~/.claude/skills/
+
+# サブエージェント
+cp agents/doc-writer.md ~/.claude/agents/
 ```
 
 ### まとめて使う場合
@@ -46,7 +60,7 @@ cp -r skills/hearing-sheet ~/.claude/skills/
 ./install.sh
 ```
 
-`~/.claude/commands/` と `~/.claude/skills/` に全ファイルをコピーします。同名ファイルがある場合は上書き前に確認します。
+`~/.claude/commands/`・`~/.claude/skills/`・`~/.claude/agents/` に全ファイルをコピーします。同名ファイルがある場合は上書き前に確認します。
 
 ## 前提・注意事項
 
