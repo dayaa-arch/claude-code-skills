@@ -25,6 +25,7 @@ FastAPI / Python プロジェクトのスキャフォールディングを対象
 | スキル | 説明 |
 | --- | --- |
 | [`hearing-sheet`](skills/hearing-sheet/SKILL.md) | Google Drive の案件フォルダからヒアリングシート雛形を読み込み、対話でヒアリングを実施し、回答を Drive とローカル `docs/idea.md` に保存する |
+| [`decision-rules`](skills/decision-rules/SKILL.md) | 業務理解・業務設計から要件定義に落とし込む過程の意思決定を、パレートの法則（80/20で急所を絞る）とシンプルルール（3〜5本の一行ルール）で行い、決定記録として残す |
 
 ### サブエージェント（`agents/`）— `~/.claude/agents/` に配置
 
