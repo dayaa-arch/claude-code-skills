@@ -26,6 +26,7 @@ FastAPI / Python プロジェクトのスキャフォールディングを対象
 | --- | --- |
 | [`hearing-sheet`](skills/hearing-sheet/SKILL.md) | Google Drive の案件フォルダからヒアリングシート雛形を読み込み、対話でヒアリングを実施し、回答を Drive とローカル `docs/idea.md` に保存する |
 | [`decision-rules`](skills/decision-rules/SKILL.md) | 業務理解・業務設計から要件定義に落とし込む過程の意思決定を、パレートの法則（80/20で急所を絞る）とシンプルルール（3〜5本の一行ルール）で行い、決定記録として残す |
+| [`obsidian-log`](skills/obsidian-log/SKILL.md) | セッションの会話を構造化サマリ（何をやったか / 決めたこととその理由 / 詰まった点 / 次にやること）のノート1枚にまとめ、Obsidian 保管庫の `AI Log/` に書き出す |
 
 ### サブエージェント（`agents/`）— `~/.claude/agents/` に配置
 
@@ -68,6 +69,7 @@ cp agents/doc-writer.md ~/.claude/agents/
 - 各スキルは特定のプロジェクト構成（`docs/` 配下7ファイル、`.steering/` ディレクトリなど）を前提にしています。詳細は各ファイル冒頭の `description` と本文を参照してください。
 - `/fsos-dev` は筆者が自作した MCP サーバ（FieldSpec OS）への接続を前提とします。同名の MCP を持たない環境では `/dev-docs` を使ってください。
 - `/fastapi-new` / `/python-new` は `uv` の利用を前提とします。
+- `obsidian-log` は **使う前に `SKILL.md` 冒頭の `VAULT` を自分の Obsidian 保管庫の絶対パスに書き換える**必要があります。
 - いずれのスキルも、機密情報（APIキー・顧客情報等）をコードやドキュメントに書き込まないことを原則としています。
 
 ## ライセンス
